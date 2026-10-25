@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Painel · Aura Divine</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#FBF1E8;--surface:#FFFAF5;--ink:#3A2216;--muted:#7A5F50;--line:#EBD3C0;--acc:#B24E1E;--accink:#fff;--serif:"Fraunces",Georgia,serif;--sans:"Figtree",system-ui,sans-serif}
+@media (prefers-color-scheme:dark){:root{--bg:#261811;--surface:#33211A;--ink:#F8EADC;--muted:#C9AE9C;--line:#4A3326;--acc:#EC9561;--accink:#261811}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 1rem/1.5 var(--sans)}
+.wrap{max-width:1000px;margin:0 auto;padding:1rem 1.2rem 4rem}
+h1,h2,h4{font-family:var(--serif);font-weight:400;margin:.3rem 0}
+.btn{background:var(--acc);color:var(--accink);border:0;border-radius:999px;padding:.7rem 1.4rem;font:600 1rem var(--sans);cursor:pointer;margin-top:.5rem}
+.chip{font:500 .9rem var(--sans);padding:.4rem .9rem;border-radius:999px;border:1.5px solid var(--line);background:transparent;color:var(--ink);cursor:pointer;display:inline-block}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.top{display:flex;justify-content:space-between;align-items:center;gap:.6rem;flex-wrap:wrap;margin-bottom:1rem}
+.tabs{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1rem}
+.campo{display:grid;gap:.25rem;margin:.5rem 0;font-size:.95rem}
+.campo input,.campo select,.campo textarea,.fmt select{font:inherit;padding:.6rem .8rem;border-radius:12px;border:1.5px solid var(--line);background:var(--surface);color:var(--ink);width:100%}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:1rem;margin:.8rem 0}
+.login{max-width:380px;margin:12vh auto 0}
+.var{border-top:1px solid var(--line);margin-top:.8rem;padding-top:.6rem}
+.chk{display:flex;align-items:center;gap:.4rem;margin:.3rem 0}
+.midia{display:flex;gap:.6rem;flex-wrap:wrap;align-items:center;margin:.4rem 0}
+.it{display:inline-flex;align-items:center;gap:.3rem}
+.it img{width:48px;height:48px;object-fit:cover;border-radius:10px;background:#fff}
+.mut{color:var(--muted);font-size:.9rem}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.8rem;margin:1rem 0}
+.kpis div{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:.9rem}
+.kpis b{display:block;font:600 1.5rem var(--serif)}
+.barra{display:grid;grid-template-columns:140px 1fr auto;gap:.6rem;align-items:center;margin:.3rem 0}
+.barra i{display:block;height:12px;border-radius:99px;background:var(--acc)}
+.rolar{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.92rem}
+th,td{text-align:left;padding:.45rem .6rem;border-bottom:1px solid var(--line);white-space:nowrap}
+:focus-visible{outline:3px solid var(--acc);outline-offset:2px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/dist/umd/supabase.js"></script>
+<script>
+const SUPABASE_URL = "https://ybxbrrwwvrhkbujucslf.supabase.co";  // cole aqui a URL do projeto (ex.: https://xxxx.supabase.co)
+const SUPABASE_KEY = "sb_publishable_cEAEjnmZ699gvnNx-lsDBQ_A7ydOS88";  // cole aqui a chave pública (anon ou publishable)
+const FORMATOS = ["Normal","Massageador","Fatia","Intenso"];
+const ordF = (a, b) => { const x = FORMATOS.indexOf(a), y = FORMATOS.indexOf(b); return (x < 0 ? 99 : x) - (y < 0 ? 99 : y) || a.localeCompare(b); };
+const PAGAMENTOS = ["Pix","Cartão de crédito","Cartão de débito","Dinheiro","Outro"];
+const app = document.getElementById("app");
+const brl = n => "R$ " + Number(n || 0).toFixed(2).replace(".", ",");
+const esc = t => String(t == null ? "" : t).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const slug = s => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-");
+function el(tag, props, kids) { const e = document.createElement(tag); Object.assign(e, props || {}); (kids || []).forEach(k => e.append(k)); return e; }
+function campo(rot, inp) { return el("label", {className:"campo"}, [el("span", {textContent:rot}), inp]); }
+function chk(rot, val, fn) { const i = el("input", {type:"checkbox", checked:val}); i.onchange = () => fn(i.checked); return el("label", {className:"chk"}, [i, " " + rot]); }
+let sb, tab = "vendas", content = null, ess = [], prods = [], vars = [], vendas = [];
+
+async function upd(t, chave, dados) {
+  let q = sb.from(t).update(dados);
+  for (const [k, v] of Object.entries(chave)) q = q.eq(k, v);
+  const { error } = await q;
+  if (error) alert("Não foi possível salvar: " + error.message);
+  return !error;
+}
+async function carregar() {
+  const [a, b, c, d] = await Promise.all([
+    sb.from("essencias").select("*").order("nome"), sb.from("produtos").select("*").order("nome"),
+    sb.from("variacoes").select("*"), sb.from("vendas").select("*").order("data", {ascending:false}).order("criado_em", {ascending:false})]);
+  ess = a.data || []; prods = b.data || []; vars = c.data || []; vendas = d.data || [];
+}
+function telaLogin(msg) {
+  const em = el("input", {type:"email", autocomplete:"username"}), se = el("input", {type:"password", autocomplete:"current-password"});
+  const ok = el("button", {type:"button", className:"btn", textContent:"Entrar"});
+  const entrar = async () => { const { error } = await sb.auth.signInWithPassword({email:em.value.trim(), password:se.value}); if (error) return telaLogin("E-mail ou senha incorretos."); iniciar(); };
+  ok.onclick = entrar; se.onkeydown = e => { if (e.key === "Enter") entrar(); };
+  app.replaceChildren(el("div", {className:"wrap"}, [el("div", {className:"card login"}, [el("h2", {textContent:"Painel Aura Divine"}), el("p", {className:"mut", textContent:msg || "Acesso restrito ao administrador."}), campo("E-mail", em), campo("Senha", se), ok])]));
+}
+async function iniciar() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return telaLogin();
+  const { data, error } = await sb.from("admins").select("email").maybeSingle();
+  if (error || !data) { await sb.auth.signOut(); return telaLogin("Este usuário não tem permissão de administrador."); }
+  await carregar(); shell();
+}
+function shell() {
+  const sair = el("button", {type:"button", className:"chip", textContent:"Sair"});
+  sair.onclick = async () => { await sb.auth.signOut(); iniciar(); };
+  const ver = el("a", {href:"./", className:"chip", textContent:"Ver o site"}); ver.style.textDecoration = "none"; ver.style.color = "inherit";
+  content = el("div", {});
+  app.replaceChildren(el("div", {className:"wrap"}, [el("div", {className:"top"}, [el("h1", {textContent:"Painel Aura Divine"}), el("div", {}, [ver, " ", sair])]), el("div", {className:"tabs", id:"tabs"}), content, el("datalist", {id:"formatos"}, FORMATOS.map(f => el("option", {value:f})))]));
+  desenha();
+}
+function desenha() {
+  document.getElementById("tabs").replaceChildren(...[["vendas","Vendas"],["estoque","Estoque"],["produtos","Produtos"],["essencias","Essências"]].map(([k, t]) => { const b = el("button", {type:"button", className:"chip", textContent:t}); b.setAttribute("aria-pressed", k === tab); b.onclick = () => { tab = k; desenha(); }; return b; }));
+  content.replaceChildren();
+  if (tab === "vendas") tabVendas(); else if (tab === "estoque") tabEstoque(); else if (tab === "produtos") tabProd(); else tabEss();
+}
+
+/* ---- Vendas ---- */
+function tabVendas() {
+  const hoje = new Date().toISOString().slice(0, 10);
+  const cli = el("input", {type:"text"}), tel = el("input", {type:"text"}), itens = el("input", {type:"text", placeholder:"Ex.: 2x Maracujá (Normal), 1x Argila verde"});
+  const val = el("input", {type:"number", step:"0.01", min:"0"}), dt = el("input", {type:"date", value:hoje});
+  const pg = el("select", {}, PAGAMENTOS.map(p => el("option", {textContent:p})));
+  const bx = el("select", {}, [el("option", {value:"", textContent:"(não baixar)"}), ...vars.filter(v => v.estoque != null).sort((a, b) => (a.produto + a.formato).localeCompare(b.produto + b.formato)).map(v => el("option", {value:v.produto + "|" + v.formato, textContent:v.produto + " — " + v.formato + " (estoque " + v.estoque + ")"}))]);
+  const bq = el("input", {type:"number", min:"1", step:"1", value:"1"});
+  const salvar = el("button", {type:"button", className:"btn", textContent:"Registrar venda"});
+  salvar.onclick = async () => {
+    const valor = parseFloat(val.value);
+    if (!cli.value.trim() || !(valor > 0)) { alert("Informe o nome da cliente e o valor."); return; }
+    const [pn, fm] = bx.value ? bx.value.split("|") : [], n = parseInt(bq.value, 10) || 0, it = pn ? vars.find(v => v.produto === pn && v.formato === fm) : null;
+    const txt = itens.value.trim() || (it && n > 0 ? n + "x " + pn + " (" + fm + ")" : "");
+    const { error } = await sb.from("vendas").insert({data:dt.value || hoje, cliente:cli.value.trim(), telefone:tel.value.trim(), itens:txt, valor, pagamento:pg.value});
+    if (error) { alert("Não foi possível salvar a venda: " + error.message); return; }
+    if (it && n > 0) await upd("variacoes", {produto:pn, formato:fm}, {estoque:Math.max(0, it.estoque - n)});
+    await carregar(); desenha();
+  };
+  const dash = el("div", {});
+  content.append(el("div", {className:"card"}, [el("h4", {textContent:"Registrar venda"}), campo("Cliente", cli), campo("WhatsApp (opcional)", tel), campo("Itens", itens), campo("Baixar do estoque (opcional)", bx), campo("Quantidade baixada", bq), campo("Valor (R$)", val), campo("Data", dt), campo("Forma de pagamento", pg), salvar]), dash);
+  const n = vendas.length, tot = vendas.reduce((s, v) => s + (Number(v.valor) || 0), 0), porP = {}, porC = {};
+  vendas.forEach(v => { const x = Number(v.valor) || 0; porP[v.pagamento] = (porP[v.pagamento] || 0) + x; const c = porC[v.cliente] = porC[v.cliente] || {n:0, t:0, p:{}}; c.n++; c.t += x; c.p[v.pagamento] = (c.p[v.pagamento] || 0) + 1; });
+  const max = Math.max(1, ...Object.values(porP));
+  dash.innerHTML = '<div class="kpis"><div><b>' + brl(tot) + '</b><span class="mut">Total vendido</span></div><div><b>' + n + '</b><span class="mut">Vendas</span></div><div><b>' + brl(n ? tot / n : 0) + '</b><span class="mut">Ticket médio</span></div></div>'
+    + '<h4>Por forma de pagamento</h4>' + (n ? Object.entries(porP).sort((a, b) => b[1] - a[1]).map(([k, v]) => '<div class="barra"><span>' + esc(k) + '</span><i style="width:' + Math.round(v / max * 100) + '%"></i><b>' + brl(v) + '</b></div>').join("") : '<p class="mut">Nenhuma venda registrada ainda.</p>')
+    + '<h4>Por cliente</h4><div class="rolar"><table><tr><th>Cliente</th><th>Pedidos</th><th>Total</th><th>Paga mais com</th></tr>' + Object.entries(porC).sort((a, b) => b[1].t - a[1].t).map(([k, c]) => '<tr><td>' + esc(k) + '</td><td>' + c.n + '</td><td>' + brl(c.t) + '</td><td>' + esc(Object.entries(c.p).sort((a, b) => b[1] - a[1])[0][0]) + '</td></tr>').join("") + '</table></div>'
+    + '<h4>Últimas vendas</h4><div class="rolar"><table>' + vendas.slice(0, 40).map(v => '<tr><td>' + esc(v.data) + '</td><td>' + esc(v.cliente) + '</td><td>' + esc(v.itens) + '</td><td>' + esc(v.pagamento) + '</td><td>' + brl(v.valor) + '</td><td><button type="button" class="chip" data-del="' + esc(v.id) + '">Excluir</button></td></tr>').join("") + '</table></div>';
+  dash.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => { if (!confirm("Excluir esta venda?")) return; await sb.from("vendas").delete().eq("id", b.dataset.del); await carregar(); desenha(); });
+}
+
+/* ---- Estoque ---- */
+function tabEstoque() {
+  const lista = vars.slice().sort((a, b) => (a.produto + a.formato).localeCompare(b.produto + b.formato));
+  const baixo = v => v.estoque != null && v.estoque <= (v.estoque_minimo == null ? 3 : v.estoque_minimo);
+  const nb = lista.filter(baixo).length;
+  content.append(el("div", {className:"card"}, [el("h4", {textContent:"Estoque"}), el("p", {className:"mut", textContent:(nb ? "Atenção: " + nb + " item(ns) com estoque baixo ou zerado. " : "") + "Deixe a quantidade em branco para não controlar um item."})]));
+  const tb = el("table", {}, [el("tr", {}, ["Produto", "Formato", "Quantidade", "", "Mínimo", "Situação"].map(t => el("th", {textContent:t})))]);
+  const cel = (...k) => el("td", {}, k);
+  lista.forEach(v => {
+    const ch = {produto:v.produto, formato:v.formato};
+    const q = el("input", {type:"number", min:"0", step:"1", value:v.estoque == null ? "" : v.estoque});
+    const m = el("input", {type:"number", min:"0", step:"1", value:v.estoque_minimo == null ? 3 : v.estoque_minimo});
+    q.style.width = m.style.width = "90px";
+    const sit = el("td", {});
+    const mostrar = () => { const x = q.value === "" ? null : parseInt(q.value, 10), mi = parseInt(m.value, 10) || 0; sit.textContent = x == null ? "Sem controle" : x <= 0 ? "Esgotado" : x <= mi ? "Baixo" : "OK"; sit.style.fontWeight = x != null && x <= mi ? "600" : "400"; };
+    const grava = async () => { const x = q.value === "" ? null : Math.max(0, parseInt(q.value, 10) || 0); if (await upd("variacoes", ch, {estoque:x})) { v.estoque = x; q.value = x == null ? "" : x; mostrar(); } };
+    q.onchange = grava;
+    m.onchange = async () => { const n = Math.max(0, parseInt(m.value, 10) || 0); if (await upd("variacoes", ch, {estoque_minimo:n})) { v.estoque_minimo = n; mostrar(); } };
+    const mais = el("button", {type:"button", className:"chip", textContent:"+1"}), menos = el("button", {type:"button", className:"chip", textContent:"−1"});
+    mais.onclick = () => { q.value = (parseInt(q.value, 10) || 0) + 1; grava(); };
+    menos.onclick = () => { q.value = Math.max(0, (parseInt(q.value, 10) || 0) - 1); grava(); };
+    tb.append(el("tr", {}, [cel(v.produto), cel(v.formato), cel(q), cel(menos, " ", mais), cel(m), sit])); mostrar();
+  });
+  content.append(el("div", {className:"rolar"}, [tb]));
+}
+
+/* ---- Produtos ---- */
+function midia(v, cp, rot, accept) {
+  const w = el("div", {className:"midia"}, [el("b", {textContent:cp === "fotos" ? "Fotos" : "Vídeos"})]);
+  (v[cp] || []).forEach((u, n) => {
+    const it = el("span", {className:"it"});
+    if (cp === "fotos") it.append(el("img", {src:u, alt:""})); else it.append(el("a", {href:u, target:"_blank", rel:"noopener", textContent:"vídeo " + (n + 1)}));
+    const x = el("button", {type:"button", className:"chip", textContent:"×"}); x.setAttribute("aria-label", "Remover");
+    x.onclick = async () => { const lista = v[cp].filter((_, j) => j !== n); if (await upd("variacoes", {produto:v.produto, formato:v.formato}, {[cp]:lista})) { v[cp] = lista; desenha(); } };
+    it.append(x); w.append(it);
+  });
+  const l = el("label", {className:"chip"}, [rot]), i = el("input", {type:"file", accept, hidden:true});
+  i.onchange = async () => {
+    const f = i.files[0]; if (!f) return;
+    l.firstChild.textContent = "Enviando…";
+    const path = slug(v.produto) + "/" + v.formato + "/" + Date.now() + "-" + f.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const { error } = await sb.storage.from("midia").upload(path, f, {contentType:f.type});
+    if (error) { alert("Não foi possível enviar: " + error.message); desenha(); return; }
+    const url = sb.storage.from("midia").getPublicUrl(path).data.publicUrl, lista = [...(v[cp] || []), url];
+    if (await upd("variacoes", {produto:v.produto, formato:v.formato}, {[cp]:lista})) v[cp] = lista;
+    desenha();
+  };
+  l.append(i); w.append(l); return w;
+}
+function boxVar(v) {
+  const ch = {produto:v.produto, formato:v.formato};
+  const pr = el("input", {type:"number", step:"0.01", min:"0", value:v.preco});
+  pr.onchange = () => upd("variacoes", ch, {preco:parseFloat(pr.value) || 0});
+  const nm = el("input", {type:"text", value:v.formato});
+  nm.onchange = async () => { const n = nm.value.trim(); if (!n || n === v.formato) { nm.value = v.formato; return; } if (await upd("variacoes", ch, {formato:n})) { await carregar(); desenha(); } else nm.value = v.formato; };
+  const rm = el("button", {type:"button", className:"chip", textContent:"Remover este formato"});
+  rm.onclick = async () => { if (!confirm("Remover o formato " + v.formato + " de " + v.produto + "?")) return; const { error } = await sb.from("variacoes").delete().eq("produto", v.produto).eq("formato", v.formato); if (error) alert("Não foi possível remover: " + error.message); await carregar(); desenha(); };
+  return el("div", {className:"var"}, [campo("Nome do formato (ex.: Normal, Massageador)", nm), campo("Preço (R$)", pr), rm,
+    chk("Disponível no site", v.ativo !== false, x => upd("variacoes", ch, {ativo:x})),
+    chk("Mostrar também as fotos originais do site", v.usar_fotos_base !== false, x => upd("variacoes", ch, {usar_fotos_base:x})),
+    midia(v, "fotos", "＋ Foto", "image/*"), midia(v, "videos", "＋ Vídeo", "video/*")]);
+}
+function boxProd(p) {
+  const vs = vars.filter(v => v.produto === p.nome).sort((a, b) => ordF(a.formato, b.formato)), ch = {nome:p.nome};
+  const e = el("select", {}, [el("option", {value:"", textContent:"(sem essência)"}), ...ess.map(x => el("option", {value:x.nome, textContent:x.nome}))]); e.value = p.essencia || "";
+  e.onchange = () => upd("produtos", ch, {essencia:e.value || null});
+  const i = el("input", {type:"text", value:p.ingredientes || ""}); i.onchange = () => upd("produtos", ch, {ingredientes:i.value.trim()});
+  const ds = el("textarea", {value:p.descricao || "", rows:3}); ds.onchange = () => upd("produtos", ch, {descricao:ds.value.trim()});
+  const b = el("div", {className:"card"}, [el("h4", {textContent:"Sabonete Artesanal " + p.nome}), campo("Essência", e), campo("Ingredientes (o site acrescenta a essência)", i), campo("Descrição do produto (aparece no site)", ds), chk("Visível no site", p.ativo !== false, x => upd("produtos", ch, {ativo:x}))]);
+  vs.forEach(v => b.append(boxVar(v)));
+  const nf = el("input", {type:"text", placeholder:"Ex.: Normal, Massageador, Fatia, Mini..."}); nf.setAttribute("list", "formatos");
+  const btn = el("button", {type:"button", className:"chip", textContent:"＋ Adicionar formato"});
+  btn.onclick = async () => {
+    const n = nf.value.trim(); if (!n) return;
+    if (vs.some(v => v.formato.toLowerCase() === n.toLowerCase())) { alert("Este formato já existe neste produto."); return; }
+    const { error } = await sb.from("variacoes").insert({produto:p.nome, formato:n, preco:vs.length ? vs[0].preco : 10});
+    if (error) alert("Não foi possível adicionar: " + error.message);
+    await carregar(); desenha();
+  };
+  b.append(el("div", {className:"var"}, [campo("Novo formato", nf), btn]));
+  return b;
+}
+function tabProd() {
+  const nome = el("input", {type:"text"}), btn = el("button", {type:"button", className:"btn", textContent:"Adicionar produto"});
+  btn.onclick = async () => { const n = nome.value.trim(); if (!n) return; const { error } = await sb.from("produtos").insert({nome:n}); if (error) alert("Não foi possível adicionar: " + error.message); await carregar(); desenha(); };
+  content.append(el("div", {className:"card"}, [el("h4", {textContent:"Novo produto"}), campo("Nome (sem a palavra Sabonete Artesanal)", nome), btn]));
+  prods.forEach(p => content.append(boxProd(p)));
+}
+
+/* ---- Essências ---- */
+function tabEss() {
+  const n = el("input", {type:"text"}), add = el("button", {type:"button", className:"btn", textContent:"Adicionar essência"});
+  add.onclick = async () => { const v = n.value.trim(); if (!v) return; const { error } = await sb.from("essencias").insert({nome:v}); if (error) alert("Não foi possível adicionar: " + error.message); await carregar(); desenha(); };
+  content.append(el("div", {className:"card"}, [campo("Nova essência", n), add]));
+  ess.forEach(e => {
+    const x = el("button", {type:"button", className:"chip", textContent:"Remover"});
+    x.onclick = async () => { if (!confirm("Remover a essência " + e.nome + "?")) return; await sb.from("essencias").delete().eq("nome", e.nome); await carregar(); desenha(); };
+    content.append(el("div", {className:"card"}, [el("b", {textContent:e.nome}), " ", el("span", {className:"mut", textContent:prods.filter(p => p.essencia === e.nome).map(p => p.nome).join(", ")}), " ", x]));
+  });
+}
+
+(function () {
+  if (!SUPABASE_URL || !SUPABASE_KEY) { app.innerHTML = '<div class="wrap"><div class="card">Preencha SUPABASE_URL e SUPABASE_KEY no início do arquivo admin.html.</div></div>'; return; }
+  sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+  iniciar();
+})();
+</script>
+</body>
+</html>
